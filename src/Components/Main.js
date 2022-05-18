@@ -1,59 +1,43 @@
 import React, { useState, useEffect } from "react";
-import Localbase from "localbase";
 
 const Main = () => {
   const [val, setval] = useState("");
-  const [users, setusers] = useState([]);
-  let db = new Localbase("db");
+  const [todos, settodos] = useState([]);
+
   const [len, setlen] = useState(0);
   const [updater, setupdater] = useState({});
   const [err, seterr] = useState(false);
 
-  const getAll = () =>
-    db
-      .collection("users")
-      .get()
-      .then((users) => {
-        if (users.length > 0) {
-          setlen(users[users.length - 1].id + 1);
-        } else {
-          setlen(0);
-        }
-        setusers(users);
-      })
-      .catch(() => {
-        seterr(true);
-      });
+  const getAll = () => {
+    const request = indexedDB.open("todos", 1);
+    request.onupgradeneeded = (e) => {
+      var db = e.target.result;
+
+      console.log("upgrade", db.name);
+      if (db.objectStoreNames.contains("todos")) {
+        db.deleteObjectStore("todos");
+      }
+      const notes = db.createObjectStore("todos", { keyPath: "timeStamp" });
+      var db = e.target.result;
+    };
+    request.onsuccess = (e) => {
+      var db = e.target.result;
+
+      console.log("success", db.name);
+    };
+    request.onerror = (e) => {
+      console.log("error");
+    };
+  };
   useEffect(() => {
     getAll();
   }, []);
 
   const onClick = (e) => {
     e.preventDefault();
-    db.collection("users")
-      .add({
-        id: len,
-        name: val,
-      })
-      .then(() => {
-        setval("");
-        getAll();
-      });
   };
-  const deleteItem = (id) => {
-    db.collection("users")
-      .doc({ id })
-      .delete()
-      .then(() => getAll());
-  };
-  const updateText = (id) => {
-    db.collection("users")
-      .doc({ id })
-      .update({
-        name: updater[id],
-      })
-      .then(() => getAll());
-  };
+  const deleteItem = (id) => {};
+  const updateText = (id) => {};
   return (
     <div style={{ margin: "0px auto", width: "350px" }}>
       <h1 style={{ textAlign: "center" }}>Learn indexedDB</h1>
@@ -80,7 +64,7 @@ const Main = () => {
               gap: 10,
             }}
           >
-            {users.map((item, index) => (
+            {todos.map((item, index) => (
               <div
                 style={{ backgroundColor: "wheat", padding: 10 }}
                 key={index}
