@@ -6,7 +6,7 @@ const Main = () => {
   const [database, setdatabase] = useState(null);
   const [updater, setupdater] = useState({});
   const [err, seterr] = useState(false);
-
+  const isEmptyOrSpaces = (str = "") => str.match(/^ *$/) !== null;
   const getStore = (type) => {
     if (!database) {
       return false;
@@ -54,7 +54,7 @@ const Main = () => {
   const additem = (e) => {
     e.preventDefault();
     const store = getStore("readwrite");
-    if (!store) {
+    if (!store || isEmptyOrSpaces(val)) {
       return;
     }
     const newTodo = {
@@ -80,7 +80,8 @@ const Main = () => {
 
   const updateText = (id) => {
     const store = getStore("readwrite");
-    if (!store) {
+    const newTitle = updater[id];
+    if (!store || isEmptyOrSpaces(newTitle)) {
       return;
     }
     const request = store.openCursor();
@@ -90,7 +91,7 @@ const Main = () => {
         if (cursor.value.timeStamp === id) {
           const res = cursor.update({
             ...cursor.value,
-            title: updater[id],
+            title: newTitle,
           });
           res.onsuccess = (e) => {
             getAll();
