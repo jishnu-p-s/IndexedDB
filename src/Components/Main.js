@@ -3,41 +3,112 @@ import React, { useState, useEffect } from "react";
 const Main = () => {
   const [val, setval] = useState("");
   const [todos, settodos] = useState([]);
-
-  const [len, setlen] = useState(0);
+  const [database, setdatabase] = useState(null);
   const [updater, setupdater] = useState({});
   const [err, seterr] = useState(false);
 
-  const getAll = () => {
+  const getStore = (type) => {
+    if (!database) {
+      return false;
+    }
+    var trans = database.transaction(["todos"], type);
+    return trans.objectStore("todos");
+  };
+
+  const connectDB = () => {
     const request = indexedDB.open("todos", 1);
     request.onupgradeneeded = (e) => {
       var db = e.target.result;
-
-      console.log("upgrade", db.name);
       if (db.objectStoreNames.contains("todos")) {
         db.deleteObjectStore("todos");
       }
-      const notes = db.createObjectStore("todos", { keyPath: "timeStamp" });
-      var db = e.target.result;
+      db.createObjectStore("todos", { keyPath: "timeStamp" });
     };
     request.onsuccess = (e) => {
       var db = e.target.result;
-
-      console.log("success", db.name);
+      setdatabase(db);
     };
     request.onerror = (e) => {
-      console.log("error");
+      seterr(true);
+    };
+  };
+
+  const getAll = () => {
+    const store = getStore("readonly");
+    if (!store) {
+      return;
+    }
+    const request = store.openCursor();
+    const resArray = [];
+    request.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        resArray.push(cursor.value);
+        cursor.continue();
+      } else {
+        settodos(resArray);
+      }
+    };
+  };
+
+  const additem = (e) => {
+    e.preventDefault();
+    const store = getStore("readwrite");
+    if (!store) {
+      return;
+    }
+    const newTodo = {
+      title: val,
+      timeStamp: new Date().toISOString(),
+    };
+    const req = store.put(newTodo);
+    req.onsuccess = (e) => {
+      getAll();
+      setval("");
+    };
+  };
+
+  const deleteItem = (id) => {
+    const store = getStore("readwrite");
+    if (!store) {
+      return;
+    }
+    var request = store.delete(id);
+
+    request.onsuccess = (e) => getAll();
+  };
+
+  const updateText = (id) => {
+    const store = getStore("readwrite");
+    if (!store) {
+      return;
+    }
+    const request = store.openCursor();
+    request.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        if (cursor.value.timeStamp === id) {
+          const res = cursor.update({
+            ...cursor.value,
+            title: updater[id],
+          });
+          res.onsuccess = (e) => {
+            getAll();
+          };
+        } else {
+          cursor.continue();
+        }
+      }
     };
   };
   useEffect(() => {
-    getAll();
-  }, []);
+    if (database) {
+      getAll();
+    } else {
+      connectDB();
+    }
+  }, [database]);
 
-  const onClick = (e) => {
-    e.preventDefault();
-  };
-  const deleteItem = (id) => {};
-  const updateText = (id) => {};
   return (
     <div style={{ margin: "0px auto", width: "350px" }}>
       <h1 style={{ textAlign: "center" }}>Learn indexedDB</h1>
@@ -50,7 +121,7 @@ const Main = () => {
               marginBottom: 20,
               gap: 5,
             }}
-            onSubmit={onClick}
+            onSubmit={additem}
           >
             <input value={val} onChange={(e) => setval(e.target.value)} />
             <button type="submit">submit</button>
@@ -86,7 +157,7 @@ const Main = () => {
                       wordBreak: "break-word",
                     }}
                   >
-                    <h1>{item.name}</h1>
+                    <h1>{item.title}</h1>
                   </div>
                   <div
                     style={{
@@ -103,7 +174,7 @@ const Main = () => {
                         borderRadius: 50,
                         cursor: "pointer",
                       }}
-                      onClick={() => deleteItem(item.id)}
+                      onClick={() => deleteItem(item.timeStamp)}
                     >
                       delete
                     </button>
@@ -112,12 +183,15 @@ const Main = () => {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    updateText(item.id);
+                    updateText(item.timeStamp);
                   }}
                 >
                   <input
                     onChange={(e) =>
-                      setupdater({ ...updater, [item.id]: e.target.value })
+                      setupdater({
+                        ...updater,
+                        [item.timeStamp]: e.target.value,
+                      })
                     }
                     value={updater[item.id]}
                   ></input>
