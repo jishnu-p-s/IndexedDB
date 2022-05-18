@@ -1,59 +1,115 @@
 import React, { useState, useEffect } from "react";
-import Localbase from "localbase";
 
 const Main = () => {
   const [val, setval] = useState("");
-  const [users, setusers] = useState([]);
-  let db = new Localbase("db");
-  const [len, setlen] = useState(0);
+  const [todos, settodos] = useState([]);
+  const [database, setdatabase] = useState(null);
   const [updater, setupdater] = useState({});
   const [err, seterr] = useState(false);
 
-  const getAll = () =>
-    db
-      .collection("users")
-      .get()
-      .then((users) => {
-        if (users.length > 0) {
-          setlen(users[users.length - 1].id + 1);
-        } else {
-          setlen(0);
-        }
-        setusers(users);
-      })
-      .catch(() => {
-        seterr(true);
-      });
-  useEffect(() => {
-    getAll();
-  }, []);
+  const getStore = (type) => {
+    if (!database) {
+      return false;
+    }
+    var trans = database.transaction(["todos"], type);
+    return trans.objectStore("todos");
+  };
 
-  const onClick = (e) => {
+  const connectDB = () => {
+    const request = indexedDB.open("todos", 1);
+    request.onupgradeneeded = (e) => {
+      var db = e.target.result;
+      if (db.objectStoreNames.contains("todos")) {
+        db.deleteObjectStore("todos");
+      }
+      db.createObjectStore("todos", { keyPath: "timeStamp" });
+    };
+    request.onsuccess = (e) => {
+      var db = e.target.result;
+      setdatabase(db);
+    };
+    request.onerror = (e) => {
+      seterr(true);
+    };
+  };
+
+  const getAll = () => {
+    const store = getStore("readonly");
+    if (!store) {
+      return;
+    }
+    const request = store.openCursor();
+    const resArray = [];
+    request.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        resArray.push(cursor.value);
+        cursor.continue();
+      } else {
+        settodos(resArray);
+      }
+    };
+  };
+
+  const additem = (e) => {
     e.preventDefault();
-    db.collection("users")
-      .add({
-        id: len,
-        name: val,
-      })
-      .then(() => {
-        setval("");
-        getAll();
-      });
+    const store = getStore("readwrite");
+    if (!store) {
+      return;
+    }
+    const newTodo = {
+      title: val,
+      timeStamp: new Date().toISOString(),
+    };
+    const req = store.put(newTodo);
+    req.onsuccess = (e) => {
+      getAll();
+      setval("");
+    };
   };
+
   const deleteItem = (id) => {
-    db.collection("users")
-      .doc({ id })
-      .delete()
-      .then(() => getAll());
+    const store = getStore("readwrite");
+    if (!store) {
+      return;
+    }
+    var request = store.delete(id);
+
+    request.onsuccess = (e) => getAll();
   };
+
   const updateText = (id) => {
-    db.collection("users")
-      .doc({ id })
-      .update({
-        name: updater[id],
-      })
-      .then(() => getAll());
+    const store = getStore("readwrite");
+    if (!store) {
+      return;
+    }
+    const request = store.openCursor();
+    request.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        if (cursor.value.timeStamp === id) {
+          const res = cursor.update({
+            ...cursor.value,
+            title: updater[id],
+          });
+          res.onsuccess = (e) => {
+            getAll();
+          };
+        } else {
+          cursor.continue();
+        }
+      }
+    };
   };
+
+  useEffect(() => {
+    if (database) {
+      getAll();
+    } else {
+      connectDB();
+    }
+  }, [database]);
+
   return (
     <div style={{ margin: "0px auto", width: "350px" }}>
       <h1 style={{ textAlign: "center" }}>Learn indexedDB</h1>
@@ -66,7 +122,7 @@ const Main = () => {
               marginBottom: 20,
               gap: 5,
             }}
-            onSubmit={onClick}
+            onSubmit={additem}
           >
             <input value={val} onChange={(e) => setval(e.target.value)} />
             <button type="submit">submit</button>
@@ -80,7 +136,7 @@ const Main = () => {
               gap: 10,
             }}
           >
-            {users.map((item, index) => (
+            {todos.map((item, index) => (
               <div
                 style={{ backgroundColor: "wheat", padding: 10 }}
                 key={index}
@@ -102,7 +158,7 @@ const Main = () => {
                       wordBreak: "break-word",
                     }}
                   >
-                    <h1>{item.name}</h1>
+                    <h1>{item.title}</h1>
                   </div>
                   <div
                     style={{
@@ -119,7 +175,7 @@ const Main = () => {
                         borderRadius: 50,
                         cursor: "pointer",
                       }}
-                      onClick={() => deleteItem(item.id)}
+                      onClick={() => deleteItem(item.timeStamp)}
                     >
                       delete
                     </button>
@@ -128,12 +184,15 @@ const Main = () => {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    updateText(item.id);
+                    updateText(item.timeStamp);
                   }}
                 >
                   <input
                     onChange={(e) =>
-                      setupdater({ ...updater, [item.id]: e.target.value })
+                      setupdater({
+                        ...updater,
+                        [item.timeStamp]: e.target.value,
+                      })
                     }
                     value={updater[item.id]}
                   ></input>
