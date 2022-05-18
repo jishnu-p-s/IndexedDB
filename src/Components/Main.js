@@ -101,6 +101,7 @@ const Main = () => {
       }
     };
   };
+
   useEffect(() => {
     if (database) {
       getAll();
